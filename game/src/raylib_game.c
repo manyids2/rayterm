@@ -87,13 +87,13 @@ static void UpdateDrawFrame(void) {
     }
 
     key = GetCharPressed(); // Check next character in the queue
+  }
 
-    if (IsKeyPressed(KEY_BACKSPACE)) {
-      letterCount--;
-      if (letterCount < 0)
-        letterCount = 0;
-      name[letterCount] = '\0';
-    }
+  if (IsKeyPressed(KEY_BACKSPACE)) {
+    letterCount--;
+    if (letterCount < 0)
+      letterCount = 0;
+    name[letterCount] = '\0';
   }
 
   framesCounter++;
@@ -104,21 +104,22 @@ static void UpdateDrawFrame(void) {
   //----------------------------------------------------------------------------------
   BeginDrawing();
 
-  ClearBackground(RAYWHITE);
+  ClearBackground(BLACK);
 
-  DrawRectangleRec(textBox, LIGHTGRAY);
+  // Border
   DrawRectangleLines((int)textBox.x, (int)textBox.y, (int)textBox.width,
                      (int)textBox.height, RED);
 
+  // Draw the actual text
   DrawText(name, (int)textBox.x + 5, (int)textBox.y + 8, 40, MAROON);
 
+  // Allow for backspace
   if (letterCount < MAX_INPUT_CHARS) {
     // Draw blinking underscore char
     if (((framesCounter / 20) % 2) == 0)
       DrawText("_", (int)textBox.x + 8 + MeasureText(name, 40),
                (int)textBox.y + 12, 40, MAROON);
-  } else
-    DrawText("Press BACKSPACE to delete chars...", 230, 300, 20, GRAY);
+  }
 
   EndDrawing();
   //----------------------------------------------------------------------------------
