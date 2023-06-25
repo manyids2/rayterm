@@ -1,5 +1,5 @@
+#include "eduterm.h"
 #include "raylib.h"
-#include "screens.h" // NOTE: Declares global (extern) variables and screens functions
 
 // Check if any key is pressed
 // NOTE: We limit keys check to keys between 32 (KEY_SPACE) and 126
@@ -40,6 +40,7 @@ static void UpdateDrawFrame(void); // Update and draw one frame
 // Main entry point
 //----------------------------------------------------------------------------------
 int main(void) {
+  eduterm_main();
   // Initialization
   //---------------------------------------------------------
   InitWindow(screenWidth, screenHeight, "raylib game template");
