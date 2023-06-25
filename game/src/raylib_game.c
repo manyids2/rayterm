@@ -1,4 +1,5 @@
 #include "eduterm.h"
+#include "logging.h"
 #include "raylib.h"
 
 // Check if any key is pressed
@@ -49,6 +50,8 @@ static void UpdateDrawFrame(struct X11 *x11); // Update and draw one frame
 // Main entry point
 //----------------------------------------------------------------------------------
 int main(void) {
+
+  SetTraceLogCallback(CustomLog);
   // Initialization
   //---------------------------------------------------------
   InitWindow(screenWidth, screenHeight, "raylib game template");
@@ -62,9 +65,9 @@ int main(void) {
   // Main game loop
   while (!WindowShouldClose()) // Detect window close button or ESC key
   {
-    if (loop_once(&pty, &x11, i, maxfd, &readable, buf, just_wrapped) > 0) {
-      break;
-    }
+    // if (loop_once(&pty, &x11, i, maxfd, &readable, buf, just_wrapped) > 0) {
+    //   break;
+    // }
     UpdateDrawFrame(&x11);
     if (framesCounter > MAX_FRAMES) {
       framesCounter = 0;
