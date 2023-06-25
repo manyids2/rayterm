@@ -1,5 +1,3 @@
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <stdbool.h>
@@ -25,14 +23,7 @@ struct X11 {
   int buf_x, buf_y;
 };
 
-bool term_set_size(struct PTY *pty, struct X11 *x11);
+int loop_once(struct PTY *pty, struct X11 *x11, int i, int maxfd,
+              fd_set *readable, char *buf, bool just_wrapped);
 
-bool pt_pair(struct PTY *pty);
-
-void x11_key(XKeyEvent *ev, struct PTY *pty);
-
-bool x11_setup(struct X11 *x11);
-
-bool spawn(struct PTY *pty);
-
-int eduterm_main();
+int eduterm_setup(struct PTY *pty, struct X11 *x11);

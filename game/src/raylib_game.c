@@ -31,19 +31,30 @@ bool mouseOnText = false;
 
 int framesCounter = 0;
 
+int i, maxfd;
+fd_set readable;
+char buf[1];
+bool just_wrapped = false;
+
+struct PTY pty;
+struct X11 x11;
+int maxfd;
+
 //----------------------------------------------------------------------------------
 // Local Functions Declaration
 //----------------------------------------------------------------------------------
-static void UpdateDrawFrame(void); // Update and draw one frame
+static void UpdateDrawFrame(struct X11 *x11); // Update and draw one frame
 
 //----------------------------------------------------------------------------------
 // Main entry point
 //----------------------------------------------------------------------------------
 int main(void) {
-  // eduterm_main();
   // Initialization
   //---------------------------------------------------------
   InitWindow(screenWidth, screenHeight, "raylib game template");
+
+  // initialize pty and x11
+  maxfd = eduterm_setup(&pty, &x11);
 
   SetTargetFPS(60); // Set our game to run at 60 frames-per-second
   //--------------------------------------------------------------------------------------
@@ -51,7 +62,10 @@ int main(void) {
   // Main game loop
   while (!WindowShouldClose()) // Detect window close button or ESC key
   {
-    UpdateDrawFrame();
+    if (loop_once(&pty, &x11, i, maxfd, &readable, buf, just_wrapped) > 0) {
+      break;
+    }
+    UpdateDrawFrame(&x11);
     if (framesCounter > MAX_FRAMES) {
       framesCounter = 0;
     }
@@ -68,7 +82,7 @@ int main(void) {
 }
 
 // Update and draw game frame
-static void UpdateDrawFrame(void) {
+static void UpdateDrawFrame(struct X11 *x11) {
   // Update
   //----------------------------------------------------------------------------------
   // Set the window's cursor to the I-Beam
