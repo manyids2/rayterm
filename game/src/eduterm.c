@@ -1,47 +1,11 @@
 #define _XOPEN_SOURCE 600
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <ctype.h>
-#include <fcntl.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <unistd.h>
+#include "eduterm.h"
 
 /* Launching /bin/sh may launch a GNU Bash and that can have nasty side
  * effects. On my system, it clobbers ~/.bash_history because it doesn't
  * respect $HISTSIZE from my ~/.bashrc. That's very annoying. So, launch
  * /bin/dash which does nothing of the sort. */
 #define SHELL "/bin/dash"
-
-struct PTY {
-  int master, slave;
-};
-
-struct X11 {
-  int fd;
-  Display *dpy;
-  int screen;
-  Window root;
-
-  Window termwin;
-  GC termgc;
-  unsigned long col_fg, col_bg;
-  int w, h;
-
-  XFontStruct *xfont;
-  int font_width, font_height;
-
-  char *buf;
-  int buf_w, buf_h;
-  int buf_x, buf_y;
-};
 
 bool term_set_size(struct PTY *pty, struct X11 *x11) {
   struct winsize ws = {
@@ -131,71 +95,7 @@ void x11_key(XKeyEvent *ev, struct PTY *pty) {
     write(pty->master, &buf[i], 1);
 }
 
-void x11_redraw(struct X11 *x11) {
-  int x, y;
-  char buf[1];
-
-  XSetForeground(x11->dpy, x11->termgc, x11->col_bg);
-  XFillRectangle(x11->dpy, x11->termwin, x11->termgc, 0, 0, x11->w, x11->h);
-
-  XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
-  for (y = 0; y < x11->buf_h; y++) {
-    for (x = 0; x < x11->buf_w; x++) {
-      buf[0] = x11->buf[y * x11->buf_w + x];
-      if (!iscntrl(buf[0])) {
-        XDrawString(x11->dpy, x11->termwin, x11->termgc, x * x11->font_width,
-                    y * x11->font_height + x11->xfont->ascent, buf, 1);
-      }
-    }
-  }
-
-  XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
-  XFillRectangle(x11->dpy, x11->termwin, x11->termgc,
-                 x11->buf_x * x11->font_width, x11->buf_y * x11->font_height,
-                 x11->font_width, x11->font_height);
-
-  XSync(x11->dpy, False);
-}
-
 bool x11_setup(struct X11 *x11) {
-  Colormap cmap;
-  XColor color;
-  XSetWindowAttributes wa = {
-      .background_pixmap = ParentRelative,
-      .event_mask = KeyPressMask | KeyReleaseMask | ExposureMask,
-  };
-
-  x11->dpy = XOpenDisplay(NULL);
-  if (x11->dpy == NULL) {
-    fprintf(stderr, "Cannot open display\n");
-    return false;
-  }
-
-  x11->screen = DefaultScreen(x11->dpy);
-  x11->root = RootWindow(x11->dpy, x11->screen);
-  x11->fd = ConnectionNumber(x11->dpy);
-
-  x11->xfont = XLoadQueryFont(x11->dpy, "fixed");
-  if (x11->xfont == NULL) {
-    fprintf(stderr, "Could not load font\n");
-    return false;
-  }
-  x11->font_width = XTextWidth(x11->xfont, "m", 1);
-  x11->font_height = x11->xfont->ascent + x11->xfont->descent;
-
-  cmap = DefaultColormap(x11->dpy, x11->screen);
-
-  if (!XAllocNamedColor(x11->dpy, cmap, "#000000", &color, &color)) {
-    fprintf(stderr, "Could not load bg color\n");
-    return false;
-  }
-  x11->col_bg = color.pixel;
-
-  if (!XAllocNamedColor(x11->dpy, cmap, "#aaaaaa", &color, &color)) {
-    fprintf(stderr, "Could not load fg color\n");
-    return false;
-  }
-  x11->col_fg = color.pixel;
 
   /* The terminal will have a fixed size of 80x25 cells. This is an
    * arbitrary number. No resizing has been implemented and child
@@ -211,20 +111,6 @@ bool x11_setup(struct X11 *x11) {
     perror("calloc");
     return false;
   }
-
-  x11->w = x11->buf_w * x11->font_width;
-  x11->h = x11->buf_h * x11->font_height;
-
-  x11->termwin = XCreateWindow(
-      x11->dpy, x11->root, 0, 0, x11->w, x11->h, 0,
-      DefaultDepth(x11->dpy, x11->screen), CopyFromParent,
-      DefaultVisual(x11->dpy, x11->screen), CWBackPixmap | CWEventMask, &wa);
-  XStoreName(x11->dpy, x11->termwin, "eduterm");
-  XMapWindow(x11->dpy, x11->termwin);
-  x11->termgc = XCreateGC(x11->dpy, x11->termwin, 0, NULL);
-
-  XSync(x11->dpy, False);
-
   return true;
 }
 
@@ -281,6 +167,7 @@ int run(struct PTY *pty, struct X11 *x11) {
     }
 
     if (FD_ISSET(pty->master, &readable)) {
+      // NOTE: Read one byte at a time?
       if (read(pty->master, buf, 1) <= 0) {
         /* This is not necessarily an error but also happens
          * when the child exits normally. */
@@ -340,23 +227,39 @@ int run(struct PTY *pty, struct X11 *x11) {
             x11->buf[x11->buf_y * x11->buf_w + i] = 0;
         }
       }
-
-      x11_redraw(x11);
     }
 
-    if (FD_ISSET(x11->fd, &readable)) {
-      while (XPending(x11->dpy)) {
-        XNextEvent(x11->dpy, &ev);
-        switch (ev.type) {
-        case Expose:
-          x11_redraw(x11);
-          break;
-        case KeyPress:
-          x11_key(&ev.xkey, pty);
-          break;
-        }
-      }
-    }
+    // redraw call
+    //
+    // int x, y;
+    // char buf[1];
+    //
+    // XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
+    // for (y = 0; y < x11->buf_h; y++) {
+    //   for (x = 0; x < x11->buf_w; x++) {
+    //     buf[0] = x11->buf[y * x11->buf_w + x];
+    //     if (!iscntrl(buf[0])) {
+    //       XDrawString(x11->dpy, x11->termwin, x11->termgc, x *
+    //       x11->font_width,
+    //                   y * x11->font_height + x11->xfont->ascent, buf, 1);
+    //     }
+    //   }
+    // }
+    //
+    // check keys
+
+    // if (FD_ISSET(x11->fd, &readable)) {
+    //   while (XPending(x11->dpy)) {
+    //     XNextEvent(x11->dpy, &ev);
+    //     switch (ev.type) {
+    //     case Expose:
+    //       break;
+    //     case KeyPress:
+    //       x11_key(&ev.xkey, pty);
+    //       break;
+    //     }
+    //   }
+    // }
   }
 
   return 0;

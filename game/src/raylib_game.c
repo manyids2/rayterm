@@ -40,7 +40,7 @@ static void UpdateDrawFrame(void); // Update and draw one frame
 // Main entry point
 //----------------------------------------------------------------------------------
 int main(void) {
-  eduterm_main();
+  // eduterm_main();
   // Initialization
   //---------------------------------------------------------
   InitWindow(screenWidth, screenHeight, "raylib game template");
