@@ -35,7 +35,7 @@ int framesCounter = 0;
 int i, maxfd;
 fd_set readable;
 char buf[1];
-bool just_wrapped = false;
+bool enter_pressed = false;
 
 struct PTY pty;
 struct X11 x11;
@@ -45,11 +45,12 @@ int maxfd;
 // Local Functions Declaration
 //----------------------------------------------------------------------------------
 static void UpdateDrawFrame(struct X11 *x11); // Update and draw one frame
+static int HandleKeys(struct X11 *x11);       // Handle key presses
 
 //----------------------------------------------------------------------------------
 // Main entry point
 //----------------------------------------------------------------------------------
-int main(void) {
+int main_game(void) {
 
   SetTraceLogCallback(CustomLog);
   // Initialization
@@ -68,7 +69,10 @@ int main(void) {
     // if (loop_once(&pty, &x11, i, maxfd, &readable, buf, just_wrapped) > 0) {
     //   break;
     // }
+    HandleKeys(&x11);
     UpdateDrawFrame(&x11);
+
+    // Prevent overflow?
     if (framesCounter > MAX_FRAMES) {
       framesCounter = 0;
     }
@@ -84,17 +88,13 @@ int main(void) {
   return 0;
 }
 
-// Update and draw game frame
-static void UpdateDrawFrame(struct X11 *x11) {
-  // Update
-  //----------------------------------------------------------------------------------
-  // Set the window's cursor to the I-Beam
-  SetMouseCursor(MOUSE_CURSOR_IBEAM);
+static int HandleKeys(struct X11 *x11) {
 
   // Get char pressed (unicode character) on the queue
   int key = GetCharPressed();
 
   // Check if more characters have been pressed on the same frame
+  // TODO: What is this doing really?
   while (key > 0) {
     // NOTE: Only allow keys in range [32..125]
     if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS)) {
@@ -114,6 +114,20 @@ static void UpdateDrawFrame(struct X11 *x11) {
     name[letterCount] = '\0';
   }
 
+  // Check for ENTER
+  enter_pressed = IsKeyPressed(KEY_ENTER);
+
+  // Just in case
+  return key;
+}
+
+// Update and draw game frame
+static void UpdateDrawFrame(struct X11 *x11) {
+  // Update
+  //----------------------------------------------------------------------------------
+  // Set the window's cursor to the I-Beam
+  SetMouseCursor(MOUSE_CURSOR_IBEAM);
+
   framesCounter++;
 
   //----------------------------------------------------------------------------------
@@ -122,6 +136,7 @@ static void UpdateDrawFrame(struct X11 *x11) {
   //----------------------------------------------------------------------------------
   BeginDrawing();
 
+  // Black background
   ClearBackground(BLACK);
 
   // Border
@@ -131,13 +146,10 @@ static void UpdateDrawFrame(struct X11 *x11) {
   // Draw the actual text
   DrawText(name, (int)textBox.x + 5, (int)textBox.y + 8, 40, MAROON);
 
-  // Allow for backspace
-  if (letterCount < MAX_INPUT_CHARS) {
-    // Draw blinking underscore char
-    if (((framesCounter / 20) % 2) == 0)
-      DrawText("_", (int)textBox.x + 8 + MeasureText(name, 40),
-               (int)textBox.y + 12, 40, MAROON);
-  }
+  // Draw blinking underscore char
+  if (((framesCounter / 20) % 2) == 0)
+    DrawText("_", (int)textBox.x + 8 + MeasureText(name, 40),
+             (int)textBox.y + 12, 40, MAROON);
 
   EndDrawing();
   //----------------------------------------------------------------------------------
