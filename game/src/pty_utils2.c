@@ -1,39 +1,102 @@
 #include <pty.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/select.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-int main(void) {
+#define BUFSIZE 4096
+#define BUFSIZE_plus_1 BUFSIZE + 1
 
-  int master;
-  int slave;
-  openpty(&master, &slave, NULL, NULL, NULL);
+struct PTY {
+  int master, slave, temp_stdout;
+  pid_t pid;
+  int success;
+};
+
+struct ReadBuffer {
+  // read buffers for `select`
+  fd_set rfds;
+  struct timeval tv;
+
+  char buf[BUFSIZE_plus_1];
+  ssize_t size;
+  size_t count;
+};
+
+void print_args(int args, char **argv) {
+  printf("args: %d\n", args);
+  for (int i = 0; i < args; i++) {
+    printf("  %d: %s\n", i, argv[i]);
+  }
+}
+
+char **remove_first_arg(int args, char **argv) {
+  args -= 1;
+  for (int i = 0; i < args; i++) {
+    argv[i] = argv[i + 1];
+  }
+  argv[args] = NULL;
+  return argv;
+}
+
+struct PTY setup_pty(int args, char **argv) {
+  struct PTY pty;
+  pty.success = -1;
+
+  if (args < 2) {
+    return pty;
+  }
+
+  // Open pty
+  openpty(&pty.master, &pty.slave, NULL, NULL, NULL);
+  printf("After openpty\n  master: %d\n  slave: %d\n", pty.master, pty.slave);
 
   // Temporarily redirect stdout to the slave, so that the command executed in
   // the subprocess will write to the slave.
-  int _stdout = dup(STDOUT_FILENO);
-  dup2(slave, STDOUT_FILENO);
+  pty.temp_stdout = dup(STDOUT_FILENO);
+  dup2(pty.slave, STDOUT_FILENO);
+  printf("After dup2\n");
 
-  pid_t pid = fork();
-  if (pid == 0) {
-    // We use
-    //
-    //     head -c $output_size /dev/zero
-    //
-    // as the command for our demo.
-    const char *argv[] = {"ls", NULL};
-    execvp(argv[0], argv);
+  pty.pid = fork();
+  if (pty.pid == 0) {
+    // We use args from cmd line, terminated by NULL as { "arg1", "arg2", NULL }
+    execvp(*argv, argv);
+  } else {
+    close(pty.master);
+    close(pty.slave);
+    return pty;
   }
 
-  fd_set rfds;
-  struct timeval tv;
-  tv.tv_sec = 0;
-  tv.tv_usec = 0;
+  pty.success = 1;
+  return pty;
+}
 
-  char buf[4097];
-  ssize_t size;
-  size_t count = 0;
+void read_once(struct PTY *pty, struct ReadBuffer *rb) {
+  FD_ZERO(&rb->rfds);
+  FD_SET(pty->master, &rb->rfds);
+  if (select(pty->master + 1, &rb->rfds, NULL, NULL, &rb->tv)) {
+    rb->size = read(pty->master, rb->buf, BUFSIZE);
+    rb->buf[rb->size] = '\0';
+    rb->count += rb->size;
+  }
+}
+
+int main(int args, char **argv) {
+  if (args < 2) {
+    exit(EXIT_FAILURE);
+  }
+
+  argv = remove_first_arg(args, argv);
+  args -= 1;
+  print_args(args, argv);
+
+  struct PTY pty = setup_pty(args, argv);
+  printf("After pty\n");
+  struct ReadBuffer rb;
+  rb.tv.tv_sec = 0;
+  rb.tv.tv_usec = 0;
 
   // Read from master as we wait for the child process to exit.
   //
@@ -41,41 +104,29 @@ int main(void) {
   // command being executed could potentially saturate the slave's buffer and
   // stall.
   while (1) {
-    if (waitpid(pid, NULL, WNOHANG) == pid) {
+    if (waitpid(pty.pid, NULL, WNOHANG) == pty.pid) {
       break;
     }
-    FD_ZERO(&rfds);
-    FD_SET(master, &rfds);
-    if (select(master + 1, &rfds, NULL, NULL, &tv)) {
-      size = read(master, buf, 4096);
-      buf[size] = '\0';
-      count += size;
-    }
+    read_once(&pty, &rb);
   }
 
   // Child process terminated; we flush the output and restore stdout.
   fsync(STDOUT_FILENO);
-  dup2(_stdout, STDOUT_FILENO);
+  dup2(pty.temp_stdout, STDOUT_FILENO);
 
   // Read until there's nothing to read, by which time we must have read
   // everything because the child is long gone.
   while (1) {
-    FD_ZERO(&rfds);
-    FD_SET(master, &rfds);
-    if (!select(master + 1, &rfds, NULL, NULL, &tv)) {
-      // No more to read.
-      break;
-    }
-    size = read(master, buf, 4096);
-    buf[size] = '\0';
-    count += size;
+    read_once(&pty, &rb);
   }
 
   // Close both ends of the pty.
-  close(master);
-  close(slave);
+  close(pty.master);
+  close(pty.slave);
 
   // Say we done
-  printf("Buf:\n%s\n", buf);
-  printf("Done. ( %zu chars read )\n", count);
+  printf("Buf:\n%s\n", rb.buf);
+  printf("Done. ( %zu chars read )\n", rb.count);
+
+  return 0;
 }
