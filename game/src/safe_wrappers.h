@@ -37,10 +37,8 @@ static inline void safe_close(int fd) {
 
 static inline int safe_dup2(int a, int b) {
   int ret;
-  printf("inside safe_dup2\n");
   ret = dup2(a, b);
-  printf("ret: %d\n", ret);
   while ((ret = dup2(a, b)) < 0 && errno == EINTR)
-    printf("a: %d, b: %d\n", a, b);
+    ;
   return ret;
 }

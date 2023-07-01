@@ -1,5 +1,3 @@
-#include "eduterm.h"
-#include "logging.h"
 #include "raylib.h"
 
 // Check if any key is pressed
@@ -20,6 +18,14 @@ bool IsAnyKeyPressed() {
 static const int screenWidth = 800;
 static const int screenHeight = 450;
 
+struct X11 {
+  int fd;
+
+  char *buf;
+  int buf_w, buf_h;
+  int buf_x, buf_y;
+};
+
 #define MAX_INPUT_CHARS 99
 #define MAX_FRAMES 3600
 
@@ -32,12 +38,6 @@ bool mouseOnText = false;
 
 int framesCounter = 0;
 
-int i, maxfd;
-fd_set readable;
-char buf[1];
-bool enter_pressed = false;
-
-struct PTY pty;
 struct X11 x11;
 int maxfd;
 
@@ -50,15 +50,11 @@ static int HandleKeys(struct X11 *x11);       // Handle key presses
 //----------------------------------------------------------------------------------
 // Main entry point
 //----------------------------------------------------------------------------------
-int main_game(void) {
+int main(void) {
 
-  SetTraceLogCallback(CustomLog);
   // Initialization
   //---------------------------------------------------------
   InitWindow(screenWidth, screenHeight, "raylib game template");
-
-  // initialize pty and x11
-  maxfd = eduterm_setup(&pty, &x11);
 
   SetTargetFPS(60); // Set our game to run at 60 frames-per-second
   //--------------------------------------------------------------------------------------
@@ -113,9 +109,6 @@ static int HandleKeys(struct X11 *x11) {
       letterCount = 0;
     name[letterCount] = '\0';
   }
-
-  // Check for ENTER
-  enter_pressed = IsKeyPressed(KEY_ENTER);
 
   // Just in case
   return key;
